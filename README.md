@@ -1,3 +1,26 @@
+UDIRC U842 Support. Original receiver replaced with A7105 for FlySky TX compatibility.
+
+FlySky protocol picked up from: https://github.com/silver13/hubsan-flysky-protocol
+Other improvements taken from: https://github.com/TheSmartGerman/bradwii-X4
+Thanks to all the modders and rcgroups. https://www.rcgroups.com/forums/showthread.php?2174365-Bradwii-on-V202-V252-JD-385
+
+Currently compiles as X4 (HL107).
+
+Modifications from upstream:
+
+- 4 wire SPI for A7105.
+- Flysky ID written to flash.
+
+Board Specs:
+
+- MCU: HL004 Cortex M0 32 bits clone of Nuvoton's Mini54ZDE.
+- InvenSense MPU-6050 combined gyro/accelerometer.
+- I used only the board, 3D printed a whoop frame and bought 3.7v motors.
+- Original voltage 7.4 volts, it stands 3.7, but no ADC voltage readings, it goes too low for the on board voltage regulator (LD1117AG)
+- The board also has current sense inputs for each motor, but not implemented in code.
+- UART easily accessible for MultiWiiConf through jst connector.
+- This drone comes with a linux wifi camera module that also receives commands from phone APP and controls the drone through serial port. This doesn't work.
+
 Bradwii for JXD JD385, WLToys V202, Hubsan H107L and clones
 =======
 
