@@ -13,7 +13,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "config.h"
 #include "lib_digitalio.h"
@@ -24,11 +24,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // set control board dependant defines here
 #if CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L
 
-#define GYRO_TYPE MPU3050       // gyro
+#define GYRO_TYPE MPU6050       // gyro
 
 #define GYRO_ORIENTATION(VALUES,X, Y, Z) {VALUES[ROLLINDEX] =  -Y; VALUES[PITCHINDEX] = X; VALUES[YAWINDEX] = -Z;}
 
-#define ACCELEROMETER_TYPE MC3210      // accelerometer
+#define ACCELEROMETER_TYPE MPU6050      // accelerometer
 // MC3210 in Hubsan X4:
 // Positive Z = level position
 // Positive Y = left side down
@@ -52,7 +52,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define GPS_TYPE NO_GPS
 #endif
 
-#define RXNUMCHANNELS 6 
+#define RXNUMCHANNELS 8 
 
 #ifndef ARMED_MIN_MOTOR_OUTPUT
 #define ARMED_MIN_MOTOR_OUTPUT 1020     // motors spin slowly when armed
@@ -66,26 +66,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define MOTORS_STOP NO
 #endif
 
-// LED Outputs (4)
-// LEDs 1 & 3 are tied together
-// LEDs 2 & 4 are tied together
-#define LED1_OUTPUT (DIGITALPORT3 | 0)
-#define LED1_ON DIGITALOFF
+// LED Outputs (2)
 
-#define LED2_OUTPUT	(DIGITALPORT0 | 4)
-#define LED2_ON DIGITALOFF
+#define LED1_OUTPUT (DIGITALPORT5 | 0)
+#define LED1_ON DIGITALON
 
-#define LED3_OUTPUT LED1_OUTPUT
-#define LED3_ON LED1_ON
+#define LED2_OUTPUT	(DIGITALPORT2 | 6)
+#define LED2_ON DIGITALON
 
-#define LED4_OUTPUT	LED2_OUTPUT
-#define LED4_ON LED2_ON
+#define BATTERY_ADC_CHANNEL NO_ADC
+//#define BATTERY_ADC_CHANNEL (1<<4)
 
-#define LED5_OUTPUT	(DIGITALPORT5 | 2)
-#define LED5_ON DIGITALON
-
-#define LED6_OUTPUT (DIGITALPORT2 | 6)
-#define LED6_ON DIGITALON
 // end of Hubsan X4 defs
 
 #elif CONTROL_BOARD_TYPE == CONTROL_BOARD_WLT_V202

@@ -13,7 +13,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 // library headers
 #include <stdbool.h>
@@ -27,12 +27,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "baro.h"
 #include "imu.h"
 #include "compass.h"
+#include "leds.h"
+#include "eeprom.h"
 
 extern globalstruct global;
 extern usersettingsstruct usersettings;
 
 //fixedpointnum estimated_g_vector[3]={0,0,FIXEDPOINTONE}; // start pointing down
-fixedpointnum estimated_compass_vector[3] = { FIXEDPOINTONE, 0, 0 };    // start pointing north
+fixedpointnum estimated_compass_vector[3] = {FIXEDPOINTONE, 0, 0}; // start pointing north
 
 #define MAXACCMAGNITUDESQUARED FIXEDPOINTCONSTANT(1.1)  // don't use acc to update attitude if under too many G's
 #define MINACCMAGNITUDESQUARED FIXEDPOINTCONSTANT(0.9)
@@ -62,22 +64,19 @@ fixedpointnum estimated_compass_vector[3] = { FIXEDPOINTONE, 0, 0 };    // start
 #define ONE_OVER_ACC_COMPLIMENTARY_FILTER_TIME_PERIOD FIXEDPOINTCONSTANT(1.0/ACC_COMPLIMENTARY_FILTER_TIME_PERIOD)
 
 //fixedpointnum ; // convert from degrees to radians and include fudge factor
-fixedpointnum barotimeinterval = 0;     // accumulated time between barometer reads
-fixedpointnum compasstimeinterval = 0;  // accumulated time between barometer reads
-fixedpointnum lastbarorawaltitude;      // remember our last reading so we can calculate altitude velocity
+fixedpointnum barotimeinterval = 0; // accumulated time between barometer reads
+fixedpointnum compasstimeinterval = 0; // accumulated time between barometer reads
+fixedpointnum lastbarorawaltitude; // remember our last reading so we can calculate altitude velocity
 
 // read the acc and gyro a bunch of times and get an average of how far off they are.
 // assumes the aircraft is sitting level and still.
 // If both==false, only gyro is calibrated and accelerometer calibration not touched.
-void calibrategyroandaccelerometer(bool both)
-{
-#ifdef X4_BUILD
-    uint8_t ledstatus;
-#endif
+
+void calibrategyroandaccelerometer(bool both) {
 
     for (int x = 0; x < 3; ++x) {
         usersettings.gyrocalibration[x] = 0;
-        if(both)
+        if (both)
             usersettings.acccalibration[x] = 0;
     }
 
@@ -87,46 +86,34 @@ void calibrategyroandaccelerometer(bool both)
     while (totaltime < (FIXEDPOINTCONSTANT(4) << TIMESLIVEREXTRASHIFT)) // 4 seconds
     {
         readgyro();
-        if(both) {
+        if (both) {
             readacc();
             global.acc_g_vector[ZINDEX] -= FIXEDPOINTONE; // vertical vector should be at 1g
         }
 
         calculatetimesliver();
         totaltime += global.timesliver;
-#ifdef X4_BUILD
-        // Rotating LED pattern
-        ledstatus = (uint8_t)((totaltime >> (FIXEDPOINTSHIFT+TIMESLIVEREXTRASHIFT-3))& 0x3);
-        switch(ledstatus) {
-        case 0:
-            x4_set_leds(X4_LED_FL);
-            break;
-        case 1:
-            x4_set_leds(X4_LED_FR);
-            break;
-        case 2:
-            x4_set_leds(X4_LED_RR);
-            break;
-        case 3:
-            x4_set_leds(X4_LED_RL);
-            break;
-        }
-#endif
+
+        leds_blink_continuous(LED_ALL, 50, 50);
+
         for (int x = 0; x < 3; ++x) {
             lib_fp_lowpassfilter(&usersettings.gyrocalibration[x], -global.gyrorate[x], global.timesliver, FIXEDPOINTONEOVERONE, TIMESLIVEREXTRASHIFT);
-            if(both)
+            if (both)
                 lib_fp_lowpassfilter(&usersettings.acccalibration[x], -global.acc_g_vector[x], global.timesliver, FIXEDPOINTONEOVERONE, TIMESLIVEREXTRASHIFT);
         }
     }
 }
 
-void initimu(void)
-{
+void initimu(void) {
     // calibrate both sensors if we didn't load any data from eeprom
-    if (global.usersettingsfromeeprom == 0)
+    if (global.usersettingsfromeeprom == 0) {
         calibrategyroandaccelerometer(true);
-    else // only gyro
-        calibrategyroandaccelerometer(false);
+        // Save in EEPROM
+        writeusersettingstoeeprom();
+    }
+    //For my X4, nothing special about the gyro.
+    //    else // only gyro
+    //        calibrategyroandaccelerometer(false);
 
     global.estimateddownvector[XINDEX] = 0;
     global.estimateddownvector[YINDEX] = 0;
@@ -146,8 +133,7 @@ void initimu(void)
 //fixedpointnum timesincezerocrossing[3]={0};
 //char gyropositive[3]={0};
 
-void imucalculateestimatedattitude(void)
-{
+void imucalculateestimatedattitude(void) {
     readgyro();
     readacc();
 
@@ -207,8 +193,8 @@ void imucalculateestimatedattitude(void)
         compasstimeinterval = 0;
     }
 #else
-    if (compasstimeinterval > (6553L << TIMESLIVEREXTRASHIFT))  // 10 hz
-    {                           // we aren't using the comopass
+    if (compasstimeinterval > (6553L << TIMESLIVEREXTRASHIFT)) // 10 hz
+    { // we aren't using the comopass
         // we need to make sure the west vector stays around unit length and stays perpendicular to the down vector
         // first make it perpendicular by crossing it with the down vector and then back again
         fixedpointnum vector[3];
@@ -227,13 +213,13 @@ void imucalculateestimatedattitude(void)
 
     // Integrate the accelerometer to determine the altitude velocity
     // Integrate again to determine position
-//normalizevector(global.estimateddownvector);
+    //normalizevector(global.estimateddownvector);
 
     fixedpointnum verticalacceleration = lib_fp_multiply(vectordotproduct(global.acc_g_vector, global.estimateddownvector) - FIXEDPOINTONE, FIXEDPOINTCONSTANT(9.8));
     global.altitudevelocity += (lib_fp_multiply(verticalacceleration >> TIMESLIVEREXTRASHIFT, global.timesliver));
     global.altitude += (lib_fp_multiply(global.altitudevelocity >> TIMESLIVEREXTRASHIFT, global.timesliver));
 
-    if (readbaro()) {           // we got a new baro reading
+    if (readbaro()) { // we got a new baro reading
         fixedpointnum baroaltitudechange = global.barorawaltitude - lastbarorawaltitude;
 
         // filter out errant baro readings.  I don't know why I need to do this, but every once in a while the baro

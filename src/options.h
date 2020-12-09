@@ -13,7 +13,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 // This file contains options that can be set in the config.h file.  
 
@@ -69,6 +69,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define MPU6050 2
 #define MC3210 3
 
+//DEFINE ADCs:
+#define NO_ADC 0
+
 // GPS_TYPE's
 #define NO_GPS 0
 #define SERIAL_GPS 1
@@ -114,3 +117,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // general yes/no (used for MOTOR_STOP)
 #define YES 1
 #define NO 0
+
+// EEPROM
+#define NO_EEPROM 0
+
+// LEDs
+#define NO_LED 0

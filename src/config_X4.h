@@ -13,7 +13,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 // this is the file that is used to configure the software.  Uncomment the appropriate lines by removing the // in front of them.
 // Configuration works with a lot of defaults.  The only thing you really need to choose is the control board.  After that,
@@ -24,22 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "options.h"
 
 void x4_set_usersettings(void);
-void x4_init_leds(void);
-void x4_set_leds(unsigned char state);
 
 // Choose your control board:
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_HK_MULTIWII_PRO_2
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_HK_MULTIWII_328P
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_HK_NANOWII
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_HK_POCKET_QUAD
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_SIRIUS_AIR
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_SIRIUS_AIR_GPS
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_SIRIUS_PARIS_V4
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_WITESPY_FLIP
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_WITESPY_MULTIWII_PRO_2
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_WITESPY_MULTIWII_PRO_2_GPS
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_WLT_V202
-//#define CONTROL_BOARD_TYPE CONTROL_BOARD_JXD_JD385
 #define CONTROL_BOARD_TYPE CONTROL_BOARD_HUBSAN_H107L
 
 // Choose the type of r/c reciever that will be used
@@ -48,8 +34,8 @@ void x4_set_leds(unsigned char state);
 //#define RX_TYPE RX_DSM2_1024
 //#define RX_TYPE RX_DSM2_2048
 //#define RX_DSM2_SERIAL_PORT 1
-//#define RX_TYPE RX_SPI_PROTOCOL
-#define RX_TYPE RX_SOFT_3_WIRE_SPI_PROTOCOL
+#define RX_TYPE RX_SPI_PROTOCOL
+//#define RX_TYPE RX_SOFT_3_WIRE_SPI_PROTOCOL
 
 // Choose a channel order if you don't like the default for your receiver type selected above
 //#define RX_CHANNEL_ORDER         THROTTLEINDEX,ROLLINDEX,PITCHINDEX,YAWINDEX,AUX1INDEX,AUX2INDEX,AUX3INDEX,AUX4INDEX,8,9,10,11 //For Graupner/Spektrum
@@ -71,7 +57,7 @@ void x4_set_leds(unsigned char state);
 //#define STICK_DISARM STICK_COMMAND_YAW_LOW+STICK_COMMAND_ROLL_LOW+STICK_COMMAND_PITCH_LOW
 
 // Choose an aircraft configuration (defaults to QUADX)
-//#define AIRCRAFT_CONFIGURATION QUADX
+#define AIRCRAFT_CONFIGURATION QUADX
 
 // Choose which serial ports will be used to transfer data to a configuration device.
 // Multiple serial channels can be configured. (i.e. one for computer, one for bluetooth).
@@ -79,10 +65,10 @@ void x4_set_leds(unsigned char state);
 // note: two examples are given below, but any combination of ports can be added together.
 
 //#define MULTIWII_CONFIG_SERIAL_PORTS NOSERIALPORT
-//#define MULTIWII_CONFIG_SERIAL_PORTS SERIALPORT1
+#define MULTIWII_CONFIG_SERIAL_PORTS SERIALPORT0
 //#define MULTIWII_CONFIG_SERIAL_PORTS SERIALPORT1+SERIALPORT3
 
-//#define SERIAL_0_BAUD 115200
+#define SERIAL_0_BAUD 115200
 //#define SERIAL_1_BAUD 9600
 //#define SERIAL_2_BAUD 9600
 //#define SERIAL_3_BAUD 115200
@@ -151,7 +137,7 @@ void x4_set_leds(unsigned char state);
 #define ESC_CALIB_HIGH MAX_MOTOR_OUTPUT
 
 // un-comment if you don't want to include autotune code
-#define NO_AUTOTUNE
+//#define NO_AUTOTUNE
 
 // To adjust how agressive the tuning is, adjust the AUTOTUNEMAXOSCILLATION value.  A larger
 // value will result in more agressive tuning. A lower value will result in softer tuning.
@@ -194,7 +180,7 @@ void x4_set_leds(unsigned char state);
 // battery voltage anymore. So we have to use the internal
 // bandgap reference as well.
 // Unit: Volt
-#define ADC_REF_VOLTAGE 3.0
+#define ADC_REF_VOLTAGE 3.3
 
 // Internal bandgap reference voltage which can be measured
 // on channel 7. Unfortunately this has high tolerance:
@@ -209,7 +195,7 @@ void x4_set_leds(unsigned char state);
 // This factor converts ADC voltage to battery voltage.
 // Inverse of voltage divider for battery voltage measurement.
 // On this board the voltage divider consists of two 10kOhm resistors.
-#define BATTERY_VOLTAGE_FACTOR 2.0
+#define BATTERY_VOLTAGE_FACTOR 9.2
 
 // If battery voltage is below this value,
 // the pilot will be warned by blinking the LEDs.
@@ -221,11 +207,7 @@ void x4_set_leds(unsigned char state);
 // Unit: Volt
 #define BATTERY_UNDERVOLTAGE_LIMIT 3.2
 
-// Parameters for x4_set_leds()
-#define X4_LED_ALL  ((unsigned char)0x0F)
-#define X4_LED_NONE ((unsigned char)0x00)
-#define X4_LED_FL   ((unsigned char)0x01) // Front left
-#define X4_LED_FR   ((unsigned char)0x02) // Front right
-#define X4_LED_RL   ((unsigned char)0x04) // Rear left
-#define X4_LED_RR   ((unsigned char)0x08) // Rear right
+#define LED1 LED1_STATE			//0x01
+#define LED2 LED2_STATE 		//0x02
 
+#define EEPROM_SIZE 512

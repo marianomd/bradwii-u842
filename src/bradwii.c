@@ -15,7 +15,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 /*
 
@@ -59,23 +59,14 @@ c
 o
 m
 
-*/
-
-// library headers
-#include "hal.h"
-#include "lib_timers.h"
-#include "lib_serial.h"
-#include "lib_i2c.h"
-#include "lib_digitalio.h"
-#include "lib_fp.h"
-#if CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L
-#include "lib_adc.h"
-#endif
+ */
 
 // project file headers
 #include "bradwii.h"
 #include "rx.h"
+#if (MULTIWII_CONFIG_SERIAL_PORTS != NOSERIALPORT) 
 #include "serial.h"
+#endif
 #include "output.h"
 #include "gyro.h"
 #include "accelerometer.h"
@@ -87,26 +78,38 @@ m
 #include "navigation.h"
 #include "pilotcontrol.h"
 #include "autotune.h"
+#include "leds.h"
 
+// library headers
+#include "hal.h"
+#include "lib_timers.h"
+#include "lib_serial.h"
+#include "lib_i2c.h"
+#include "lib_digitalio.h"
+#include "lib_fp.h"
+#if (BATTERY_ADC_CHANNEL != NO_ADC)
+#include "lib_adc.h"
+#endif
 // Data type for stick movement detection to execute accelerometer calibration
+
 typedef enum stickstate_tag {
-    STICK_STATE_START,   // No stick movement detected yet
-    STICK_STATE_LOW,     // Stick was low recently
-    STICK_STATE_HIGH     // Stick was high recently
+    STICK_STATE_START, // No stick movement detected yet
+    STICK_STATE_LOW, // Stick was low recently
+    STICK_STATE_HIGH // Stick was high recently
 } stickstate_t;
 
-globalstruct global;            // global variables
-usersettingsstruct usersettings;        // user editable variables
+globalstruct global; // global variables
+usersettingsstruct usersettings; // user editable variables
 
 fixedpointnum altitudeholddesiredaltitude;
-fixedpointnum integratedaltitudeerror;  // for pid control
+fixedpointnum integratedaltitudeerror; // for pid control
 
 fixedpointnum integratedangleerror[3];
 
 // limit pid windup
 #define INTEGRATEDANGLEERRORLIMIT FIXEDPOINTCONSTANT(1000)
 
-#if CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L
+#if (BATTERY_ADC_CHANNEL != NO_ADC)
 // Factor from ADC input voltage to battery voltage
 #define FP_BATTERY_VOLTAGE_FACTOR FIXEDPOINTCONSTANT(BATTERY_VOLTAGE_FACTOR)
 
@@ -128,12 +131,12 @@ static void detectstickcommand(void);
 
 
 // It all starts here:
-int main(void)
-{
-#if CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L
+
+int main(void) {
+    static bool isbatterylow = false; // Set to true while voltage is below limit
+#if (BATTERY_ADC_CHANNEL != NO_ADC)
     // Static to keep it off the stack
-    static bool isbatterylow;         // Set to true while voltage is below limit
-    static bool isadcchannelref;      // Set to true if the next ADC result is reference channel
+    static bool isadcchannelref; // Set to true if the next ADC result is reference channel
     // Current unfiltered battery voltage [V]. Filtered value is in global.batteryvoltage
     static fixedpointnum batteryvoltage;
     // Current raw battery voltage.
@@ -144,19 +147,16 @@ int main(void)
     // because the specified tolerance for this is pretty high.
     static fixedpointnum initialbandgapvoltage;
 #endif
-    static bool isfailsafeactive;     // true while we don't get new data from transmitter
+    static bool isfailsafeactive; // true while we don't get new data from transmitter
 
     // initialize hardware
-	lib_hal_init();
+    lib_hal_init();
 
     // start with default user settings in case there's nothing in eeprom
     defaultusersettings();
-    
+
     // try to load usersettings from eeprom
     readusersettingsfromeeprom();
-
-    // set our LED as a digital output
-    lib_digitalio_initpin(LED1_OUTPUT, DIGITALOUTPUT);
 
     //initialize the libraries that require initialization
     lib_timers_init();
@@ -164,31 +164,28 @@ int main(void)
 
 #if CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L
     // extras init for Hubsan X4
-    x4_init_leds();
-    if(!global.usersettingsfromeeprom) {
+    leds_init();
+    if (!global.usersettingsfromeeprom) {
         // If nothing found in EEPROM (= data flash on Mini51)
         // use default X4 settings.
         x4_set_usersettings();
+        // Init user settings in eeprom
+        writeusersettingstoeeprom();
         // Indicate that default settings are used and accelerometer
-        // calibration will be executed (4 long LED blinks)
-        for(uint8_t i=0;i<4;i++) {
-            x4_set_leds(X4_LED_ALL);
-            lib_timers_delaymilliseconds(500);
-            x4_set_leds(X4_LED_NONE);
-            lib_timers_delaymilliseconds(500);
-        }
+        // calibration will be executed 
+        leds_blink_cycles(LED1, 50, 50, 10);
     }
 #endif
-	
+
     // pause a moment before initializing everything. To make sure everything is powered up
-    lib_timers_delaymilliseconds(100); 
-		
+    lib_timers_delaymilliseconds(100);
+
     // initialize all other modules
     initrx();
-#if (CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L)
+#if (BATTERY_ADC_CHANNEL != NO_ADC)
     // Give the battery voltage lowpass filter a reasonable starting point.
     global.batteryvoltage = FP_BATTERY_UNDERVOLTAGE_LIMIT;
-    lib_adc_init();  // For battery voltage
+    lib_adc_init(); // For battery voltage
 #endif
     initoutputs();
 #if (MULTIWII_CONFIG_SERIAL_PORTS != NOSERIALPORT)
@@ -207,8 +204,7 @@ int main(void)
 #endif
     initimu();
 
-#if (CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L)
-    x4_set_leds(X4_LED_ALL);
+#if (BATTERY_ADC_CHANNEL != NO_ADC)
     // Measure internal bandgap voltage now.
     // Battery is probably full and there is no load,
     // so we can expect to have a good external ADC reference
@@ -216,17 +212,17 @@ int main(void)
     lib_adc_select_channel(LIB_ADC_CHANREF);
     initialbandgapvoltage = 0;
     // Take average of 8 measurements
-    for(int i=0;i<8;i++) {
+    for (int i = 0; i < 8; i++) {
         lib_adc_startconv();
-        while(lib_adc_is_busy())
-            ;
+        while (lib_adc_is_busy());
         initialbandgapvoltage += lib_adc_read_volt();
     }
     initialbandgapvoltage >>= 3;
-    bandgapvoltageraw = lib_adc_read_raw();
+		global.debugvalue[0] = lib_fp_multiply(initialbandgapvoltage,100<<FIXEDPOINTSHIFT)>>FIXEDPOINTSHIFT;
+		bandgapvoltageraw = lib_adc_read_raw();
     // Start first battery voltage measurement
     isadcchannelref = false;
-    lib_adc_select_channel(LIB_ADC_CHAN5);
+    lib_adc_select_channel(BATTERY_ADC_CHANNEL);
     lib_adc_startconv();
 #endif
 
@@ -236,7 +232,8 @@ int main(void)
     global.armed = 0;
     global.navigationmode = NAVIGATIONMODEOFF;
     global.failsafetimer = lib_timers_starttimer();
-
+    unsigned char led_status = LED_ALL;
+		
     for (;;) {
 
         // check to see what switches are activated
@@ -252,7 +249,7 @@ int main(void)
         imucalculateestimatedattitude();
 
         // arm and disarm via rx aux switches
-        if (global.rxvalues[THROTTLEINDEX] < FPSTICKLOW) {      // see if we want to change armed modes
+        if (global.rxvalues[THROTTLEINDEX] < FPSTICKLOW) { // see if we want to change armed modes
             if (!global.armed) {
                 if (global.activecheckboxitems & CHECKBOXMASKARM) {
                     global.armed = 1;
@@ -262,11 +259,12 @@ int main(void)
                     global.heading_when_armed = global.currentestimatedeulerattitude[YAWINDEX];
                     global.altitude_when_armed = global.barorawaltitude;
                 }
-            } else if (!(global.activecheckboxitems & CHECKBOXMASKARM))
+            } else if (!(global.activecheckboxitems & CHECKBOXMASKARM)) {
                 global.armed = 0;
+            }
         } // if throttle low
 
-        if(!global.armed) {
+        if (!global.armed) {
             // Not armed: check if there is a stick command to execute.
             detectstickcommand();
         }
@@ -274,19 +272,19 @@ int main(void)
 #if (GPS_TYPE!=NO_GPS)
         // turn on or off navigation when appropriate
         if (global.navigationmode == NAVIGATIONMODEOFF) {
-            if (global.activecheckboxitems & CHECKBOXMASKRETURNTOHOME)  // return to home switch turned on
+            if (global.activecheckboxitems & CHECKBOXMASKRETURNTOHOME) // return to home switch turned on
             {
                 navigation_set_destination(global.gps_home_latitude, global.gps_home_longitude);
                 global.navigationmode = NAVIGATIONMODERETURNTOHOME;
-            } else if (global.activecheckboxitems & CHECKBOXMASKPOSITIONHOLD)   // position hold turned on
+            } else if (global.activecheckboxitems & CHECKBOXMASKPOSITIONHOLD) // position hold turned on
             {
                 navigation_set_destination(global.gps_current_latitude, global.gps_current_longitude);
                 global.navigationmode = NAVIGATIONMODEPOSITIONHOLD;
             }
-        } else                  // we are currently navigating
-        {                       // turn off navigation if desired
+        } else // we are currently navigating
+        { // turn off navigation if desired
             if ((global.navigationmode == NAVIGATIONMODERETURNTOHOME && !(global.activecheckboxitems & CHECKBOXMASKRETURNTOHOME))
-                ||(global.navigationmode == NAVIGATIONMODEPOSITIONHOLD && !(global.activecheckboxitems & CHECKBOXMASKPOSITIONHOLD))) {
+                    || (global.navigationmode == NAVIGATIONMODEPOSITIONHOLD && !(global.activecheckboxitems & CHECKBOXMASKPOSITIONHOLD))) {
                 global.navigationmode = NAVIGATIONMODEOFF;
 
                 // we will be turning control back over to the pilot.
@@ -320,7 +318,7 @@ int main(void)
         unsigned char gotnewgpsreading = readgps();
 
         // if we are navigating, use navigation to determine our desired attitude (tilt angles)
-        if (global.navigationmode != NAVIGATIONMODEOFF) {       // we are navigating
+        if (global.navigationmode != NAVIGATIONMODEOFF) { // we are navigating
             navigation_setangleerror(gotnewgpsreading, angleerror);
         }
 #endif
@@ -340,9 +338,9 @@ int main(void)
             if (!(global.previousactivecheckboxitems & CHECKBOXMASKAUTOTUNE))
                 autotune(angleerror, AUTOTUNESTARTING); // tell autotune that we just started autotuning
             else
-                autotune(angleerror, AUTOTUNETUNING);   // tell autotune that we are in the middle of autotuning
+                autotune(angleerror, AUTOTUNETUNING); // tell autotune that we are in the middle of autotuning
         } else if (global.previousactivecheckboxitems & CHECKBOXMASKAUTOTUNE)
-            autotune(angleerror, AUTOTUNESTOPPING);     // tell autotune that we just stopped autotuning
+            autotune(angleerror, AUTOTUNESTOPPING); // tell autotune that we just stopped autotuning
 #endif
 
         // get the pilot's throttle component
@@ -355,7 +353,7 @@ int main(void)
 
         if (global.activecheckboxitems & CHECKBOXMASKALTHOLD) {
             altitudeholdactive = 1;
-            if (!(global.previousactivecheckboxitems & CHECKBOXMASKALTHOLD)) {  // we just turned on alt hold.  Remember our current alt. as our target
+            if (!(global.previousactivecheckboxitems & CHECKBOXMASKALTHOLD)) { // we just turned on alt hold.  Remember our current alt. as our target
                 altitudeholddesiredaltitude = global.altitude;
                 integratedaltitudeerror = 0;
             }
@@ -375,11 +373,11 @@ int main(void)
         static fixedpointnum uncrasabilitydesiredaltitude;
         static unsigned char doinguncrashablealtitudehold = 0;
 
-        if (global.activecheckboxitems & CHECKBOXMASKUNCRASHABLE)       // uncrashable mode
+        if (global.activecheckboxitems & CHECKBOXMASKUNCRASHABLE) // uncrashable mode
         {
             // First, check our altitude
             // are we about to crash?
-            if (!(global.previousactivecheckboxitems & CHECKBOXMASKUNCRASHABLE)) {      // we just turned on uncrashability.  Remember our current altitude as our new minimum altitude.
+            if (!(global.previousactivecheckboxitems & CHECKBOXMASKUNCRASHABLE)) { // we just turned on uncrashability.  Remember our current altitude as our new minimum altitude.
                 uncrasabilityminimumaltitude = global.altitude;
 #if (GPS_TYPE!=NO_GPS)
                 doinguncrashablenavigationflag = 0;
@@ -395,8 +393,8 @@ int main(void)
                 altitudeholddesiredaltitude = uncrasabilityminimumaltitude + FPUNCRAHSABLE_MAX_ALTITUDE_OFFSET;
                 integratedaltitudeerror = 0;
                 altitudeholdactive = 1;
-            } else if (projectedaltitude < uncrasabilityminimumaltitude) {      // We are about to get below our minimum crashability altitude
-                if (doinguncrashablealtitudehold == 0) {        // if we just entered uncrashability, set our desired altitude to the current altitude
+            } else if (projectedaltitude < uncrasabilityminimumaltitude) { // We are about to get below our minimum crashability altitude
+                if (doinguncrashablealtitudehold == 0) { // if we just entered uncrashability, set our desired altitude to the current altitude
                     uncrasabilitydesiredaltitude = global.altitude;
                     integratedaltitudeerror = 0;
                     doinguncrashablealtitudehold = 1;
@@ -420,8 +418,8 @@ int main(void)
             fixedpointnum bearingfromhome;
             fixedpointnum distancefromhome = navigation_getdistanceandbearing(global.gps_current_latitude, global.gps_current_longitude, global.gps_home_latitude, global.gps_home_longitude, &bearingfromhome);
 
-            if (distancefromhome > FPUNCRASHABLE_RADIUS) {      // we are outside the allowable area, navigate back toward home
-                if (!doinguncrashablenavigationflag) {  // we just started navigating, so we have to set the destination
+            if (distancefromhome > FPUNCRASHABLE_RADIUS) { // we are outside the allowable area, navigate back toward home
+                if (!doinguncrashablenavigationflag) { // we just started navigating, so we have to set the destination
                     navigation_set_destination(global.gps_home_latitude, global.gps_home_longitude);
                     doinguncrashablenavigationflag = 1;
                 }
@@ -440,16 +438,16 @@ int main(void)
         // check for altitude hold and adjust the throttle output accordingly
         if (altitudeholdactive) {
             integratedaltitudeerror += lib_fp_multiply(altitudeholddesiredaltitude - global.altitude, global.timesliver);
-            lib_fp_constrain(&integratedaltitudeerror, -INTEGRATEDANGLEERRORLIMIT, INTEGRATEDANGLEERRORLIMIT);  // don't let the integrated error get too high
+            lib_fp_constrain(&integratedaltitudeerror, -INTEGRATEDANGLEERRORLIMIT, INTEGRATEDANGLEERRORLIMIT); // don't let the integrated error get too high
 
             // do pid for the altitude hold and add it to the throttle output
             throttleoutput += lib_fp_multiply(altitudeholddesiredaltitude - global.altitude, usersettings.pid_pgain[ALTITUDEINDEX])
-            - lib_fp_multiply(global.altitudevelocity, usersettings.pid_dgain[ALTITUDEINDEX])
-            + lib_fp_multiply(integratedaltitudeerror, usersettings.pid_igain[ALTITUDEINDEX]);
+                    - lib_fp_multiply(global.altitudevelocity, usersettings.pid_dgain[ALTITUDEINDEX])
+                    + lib_fp_multiply(integratedaltitudeerror, usersettings.pid_igain[ALTITUDEINDEX]);
 
         }
 #endif
-        if ((global.activecheckboxitems & CHECKBOXMASKAUTOTHROTTLE) ||altitudeholdactive) {
+        if ((global.activecheckboxitems & CHECKBOXMASKAUTOTHROTTLE) || altitudeholdactive) {
             // Auto Throttle Adjust - Increases the throttle when the aircraft is tilted so that the vertical
             // component of thrust remains constant.
             // The AUTOTHROTTLEDEADAREA adjusts the value at which the throttle starts taking effect.  If this
@@ -474,8 +472,7 @@ int main(void)
             // make sure we are level!
             angleerror[ROLLINDEX] = -global.currentestimatedeulerattitude[ROLLINDEX];
             angleerror[PITCHINDEX] = -global.currentestimatedeulerattitude[PITCHINDEX];
-        }
-        else
+        } else
             isfailsafeactive = false;
 
         // calculate output values.  Output values will range from 0 to 1.0
@@ -497,18 +494,18 @@ int main(void)
 
             // do the attitude pid
             pidoutput[x] = lib_fp_multiply(angleerror[x], usersettings.pid_pgain[x])
-                - lib_fp_multiply(global.gyrorate[x], usersettings.pid_dgain[x])
-            + (lib_fp_multiply(integratedangleerror[x], usersettings.pid_igain[x]) >> 4);
+                    - lib_fp_multiply(global.gyrorate[x], usersettings.pid_dgain[x])
+                    + (lib_fp_multiply(integratedangleerror[x], usersettings.pid_igain[x]) >> 4);
 
             // add gain scheduling.  
             pidoutput[x] = lib_fp_multiply(gainschedulingmultiplier, pidoutput[x]);
         }
 
 #if (CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L)
-		// On Hubsan X4 H107L the front right motor
-		// rotates clockwise (viewed from top).
-		// On the J385 the motors spin in the opposite direction.
-		// PID output for yaw has to be reversed
+        // On Hubsan X4 H107L the front right motor
+        // rotates clockwise (viewed from top).
+        // On the J385 the motors spin in the opposite direction.
+        // PID output for yaw has to be reversed
         pidoutput[YAWINDEX] = -pidoutput[YAWINDEX];
 #endif
 
@@ -518,9 +515,9 @@ int main(void)
         // if we aren't armed, or if we desire to have the motors stop, 
         if (!global.armed
 #if (MOTORS_STOP==YES)
-            || (global.rxvalues[THROTTLEINDEX] < FPSTICKLOW && !(global.activecheckboxitems & (CHECKBOXMASKFULLACRO | CHECKBOXMASKSEMIACRO)))
+                || (global.rxvalues[THROTTLEINDEX] < FPSTICKLOW && !(global.activecheckboxitems & (CHECKBOXMASKFULLACRO | CHECKBOXMASKSEMIACRO)))
 #endif
-            )
+                )
             setallmotoroutputs(MIN_MOTOR_OUTPUT);
         else {
             // mix the outputs to create motor values
@@ -531,83 +528,87 @@ int main(void)
             setmotoroutput(3, 3, throttleoutput + pidoutput[ROLLINDEX] - pidoutput[PITCHINDEX] - pidoutput[YAWINDEX]);
 #endif // QUADX config
         }
-
-#if (CONTROL_BOARD_TYPE == CONTROL_BOARD_HUBSAN_H107L)
+#if (BATTERY_ADC_CHANNEL != NO_ADC)
         // Measure battery voltage
-        if(!lib_adc_is_busy())
-        {
+        if (!lib_adc_is_busy()) {
             // What did we just measure?
             // Always alternate between reference channel
             // and battery voltage
-            if(isadcchannelref) {
+            if (isadcchannelref) {
                 bandgapvoltageraw = lib_adc_read_raw();
-                isadcchannelref = false;
-                lib_adc_select_channel(LIB_ADC_CHAN5);
+  							isadcchannelref = false;
+                lib_adc_select_channel(BATTERY_ADC_CHANNEL);
             } else {
                 batteryvoltageraw = lib_adc_read_raw();
                 isadcchannelref = true;
                 lib_adc_select_channel(LIB_ADC_CHANREF);
 
+							// conversion error
+							if(bandgapvoltageraw!=0 && batteryvoltageraw!=0){
                 // Unfortunately we have to use fixed point division now
-                batteryvoltage = (batteryvoltageraw << 12) / (bandgapvoltageraw >> (FIXEDPOINTSHIFT-12));
+                batteryvoltage = (batteryvoltageraw << 12) / (bandgapvoltageraw >> (FIXEDPOINTSHIFT - 12));
                 // Now we have battery voltage relative to bandgap reference voltage.
                 // Multiply by initially measured bandgap voltage to get the voltage at the ADC pin.
                 batteryvoltage = lib_fp_multiply(batteryvoltage, initialbandgapvoltage);
-                // Now take the voltage divider into account to get battery voltage.
+								// Now take the voltage divider into account to get battery voltage.
                 batteryvoltage = lib_fp_multiply(batteryvoltage, FP_BATTERY_VOLTAGE_FACTOR);
-
-                // Since we measure under load, the voltage is not stable.
-                // Apply 0.5 second lowpass filter.
-                // Use constant FIXEDPOINTONEOVERONEFOURTH instead of FIXEDPOINTONEOVERONEHALF
-                // Because we call this only every other iteration.
-                // (...alternatively multiply global.timesliver by two).
-                lib_fp_lowpassfilter(&(global.batteryvoltage), batteryvoltage, global.timesliver, FIXEDPOINTONEOVERONEFOURTH, TIMESLIVEREXTRASHIFT);
-                // Update state of isbatterylow flag.
-                if(global.batteryvoltage < FP_BATTERY_UNDERVOLTAGE_LIMIT)
-                    isbatterylow = true;
-                else
-                    isbatterylow = false;
+								if((batteryvoltage>>FIXEDPOINTSHIFT)<9){
+									// Since we measure under load, the voltage is not stable.
+									// Apply 0.5 second lowpass filter.
+									// Use constant FIXEDPOINTONEOVERONEFOURTH instead of FIXEDPOINTONEOVERONEHALF
+									// Because we call this only every other iteration.
+									// (...alternatively multiply global.timesliver by two).
+									lib_fp_lowpassfilter(&(global.batteryvoltage), batteryvoltage, global.timesliver*2, FIXEDPOINTONEOVERONEHALF, TIMESLIVEREXTRASHIFT);
+									//global.debugvalue[2] = lib_fp_multiply(global.batteryvoltage,100<<FIXEDPOINTSHIFT)>>FIXEDPOINTSHIFT;
+									// Update state of isbatterylow flag.
+									if (global.batteryvoltage < FP_BATTERY_UNDERVOLTAGE_LIMIT)
+											isbatterylow = true;
+									else
+											isbatterylow = false;
+								}
+							}
             }
             // Start next conversion
             lib_adc_startconv();
         } // IF ADC result available
+#endif
+
 
         // Decide what LEDs have to show
-        if(isbatterylow) {
+        if (isbatterylow) {
             // Highest priority: Battery voltage
             // Blink all LEDs slow
-            if(lib_timers_gettimermicroseconds(0) % 500000 > 250000)
-                x4_set_leds(X4_LED_ALL);
-            else
-                x4_set_leds(X4_LED_NONE);
-        }
-        else if(isfailsafeactive) {
+            global.armed ? leds_blink_continuous(LED_ALL, 1000, 500) : leds_blink_continuous(LED_ALL, 500, 1000);
+        } else if (isfailsafeactive) {
             // Lost contact with TX
             // Blink LEDs fast alternating
-            if(lib_timers_gettimermicroseconds(0) % 250000 > 120000)
-                x4_set_leds(X4_LED_FR | X4_LED_RL);
-            else
-                x4_set_leds(X4_LED_FL | X4_LED_RR);
-        }
-        else if(!global.armed) {
+            leds_blink_continuous(LED_ALL, 125, 125);
+        } else if (!global.armed) {
             // Not armed
             // Short blinks
-            if(lib_timers_gettimermicroseconds(0) % 500000 > 450000)
-                x4_set_leds(X4_LED_ALL);
-            else
-                x4_set_leds(X4_LED_NONE);
-        }
-        else {
-            // LEDs stay on
-            x4_set_leds(X4_LED_ALL);
-        }
-
+            leds_blink_continuous(LED_ALL, 50, 450);
+        } else {
+#ifdef LED1
+						if (global.activecheckboxitems & CHECKBOXMASKLED1){
+							led_status = (led_status | LED1);
+						}else{
+							led_status = (led_status & ~LED1);
+						}  
 #endif
+
+#ifdef LED2
+						if (global.activecheckboxitems & CHECKBOXMASKLED2){
+							led_status = (led_status | LED2);
+						}else{ 
+							led_status = (led_status & ~LED2);
+						}
+#endif
+            leds_set(led_status);
+        }
     } // Endless loop
 } // main()
 
-void calculatetimesliver(void)
-{
+void calculatetimesliver(void) {
     // load global.timesliver with the amount of time that has passed since we last went through this loop
     // convert from microseconds to fixedpointnum seconds shifted by TIMESLIVEREXTRASHIFT
     // 4295L is (FIXEDPOINTONE<<FIXEDPOINTSHIFT)*.000001
@@ -618,22 +619,21 @@ void calculatetimesliver(void)
         global.timesliver = FIXEDPOINTONEFIFTIETH << TIMESLIVEREXTRASHIFT;
 }
 
-void defaultusersettings(void)
-{
-    global.usersettingsfromeeprom = 0;  // this should get set to one if we read from eeprom
+void defaultusersettings(void) {
+    global.usersettingsfromeeprom = 0; // this should get set to one if we read from eeprom
 
     // set default acro mode rotation rates
-    usersettings.maxyawrate = 400L << FIXEDPOINTSHIFT;  // degrees per second
+    usersettings.maxyawrate = 400L << FIXEDPOINTSHIFT; // degrees per second
     usersettings.maxpitchandrollrate = 400L << FIXEDPOINTSHIFT; // degrees per second
 
     // set default PID settings
     for (int x = 0; x < 3; ++x) {
-        usersettings.pid_pgain[x] = 15L << 3;   // 1.5 on configurator
+        usersettings.pid_pgain[x] = 15L << 3; // 1.5 on configurator
         usersettings.pid_igain[x] = 8L; // .008 on configurator
-        usersettings.pid_dgain[x] = 8L << 2;    // 8 on configurator
+        usersettings.pid_dgain[x] = 8L << 2; // 8 on configurator
     }
 
-    usersettings.pid_pgain[YAWINDEX] = 30L << 3;        // 3 on configurator
+    usersettings.pid_pgain[YAWINDEX] = 30L << 3; // 3 on configurator
 
     for (int x = 3; x < NUMPIDITEMS; ++x) {
         usersettings.pid_pgain[x] = 0;
@@ -641,22 +641,28 @@ void defaultusersettings(void)
         usersettings.pid_dgain[x] = 0;
     }
 
-    usersettings.pid_pgain[ALTITUDEINDEX] = 27L << 7;   // 2.7 on configurator
-    usersettings.pid_dgain[ALTITUDEINDEX] = 6L << 9;    // 6 on configurator
+    usersettings.pid_pgain[ALTITUDEINDEX] = 27L << 7; // 2.7 on configurator
+    usersettings.pid_dgain[ALTITUDEINDEX] = 6L << 9; // 6 on configurator
 
-    usersettings.pid_pgain[NAVIGATIONINDEX] = 25L << 11;        // 2.5 on configurator
-    usersettings.pid_dgain[NAVIGATIONINDEX] = 188L << 8;        // .188 on configurator
+    usersettings.pid_pgain[NAVIGATIONINDEX] = 25L << 11; // 2.5 on configurator
+    usersettings.pid_dgain[NAVIGATIONINDEX] = 188L << 8; // .188 on configurator
 
     // set default configuration checkbox settings.
     for (int x = 0; x < NUMPOSSIBLECHECKBOXES; ++x) {
         usersettings.checkboxconfiguration[x] = 0;
     }
-//   usersettings.checkboxconfiguration[CHECKBOXARM]=CHECKBOXMASKAUX1HIGH;
+    //usersettings.checkboxconfiguration[CHECKBOXARM]=CHECKBOXMASKAUX3HIGH;
     usersettings.checkboxconfiguration[CHECKBOXHIGHANGLE] = CHECKBOXMASKAUX1LOW;
     usersettings.checkboxconfiguration[CHECKBOXSEMIACRO] = CHECKBOXMASKAUX1HIGH;
     usersettings.checkboxconfiguration[CHECKBOXHIGHRATES] = CHECKBOXMASKAUX1HIGH;
-	
-		// reset the calibration settings
+
+#ifdef USERSETTINGS_CHECKBOXLED1
+    usersettings.checkboxconfiguration[CHECKBOXLED1] = USERSETTINGS_CHECKBOXLED1;
+#endif
+#ifdef USERSETTINGS_CHECKBOXLED2
+    usersettings.checkboxconfiguration[CHECKBOXLED2] = USERSETTINGS_CHECKBOXLED2;
+#endif
+    // reset the calibration settings
     for (int x = 0; x < 3; ++x) {
         usersettings.compasszerooffset[x] = 0;
         usersettings.compasscalibrationmultiplier[x] = 1L << FIXEDPOINTSHIFT;
@@ -673,6 +679,7 @@ void defaultusersettings(void)
 // Executes command based on stick movements.
 // Call this only when not armed.
 // Currently implemented: accelerometer calibration
+
 static void detectstickcommand(void) {
     // Timeout for stick movements for accelerometer calibration
     static uint32_t stickcommandtimer;
@@ -686,9 +693,9 @@ static void detectstickcommand(void) {
     if (global.rxvalues[THROTTLEINDEX] < FPSTICKLOW) {
         if (global.rxvalues[ROLLINDEX] < FP_RXMOVELOW) {
             // Stick is now low. What has happened before?
-            if(lastrollstickstate == STICK_STATE_START) {
+            if (lastrollstickstate == STICK_STATE_START) {
                 // We just come from start position, so this is our first movement
-                rollmovecounter=1;
+                rollmovecounter = 1;
                 lastrollstickstate = STICK_STATE_LOW;
                 // Detected stick movement, so restart timeout.
                 stickcommandtimer = lib_timers_starttimer();
@@ -701,9 +708,9 @@ static void detectstickcommand(void) {
             } // else: nothing happened, nothing to do
         } else if (global.rxvalues[ROLLINDEX] > FP_RXMOVEHIGH) {
             // And now the same in opposite direction...
-            if(lastrollstickstate == STICK_STATE_START) {
+            if (lastrollstickstate == STICK_STATE_START) {
                 // We just come from start position
-                rollmovecounter=1;
+                rollmovecounter = 1;
                 lastrollstickstate = STICK_STATE_HIGH;
                 // Detected stick movement, so restart timeout.
                 stickcommandtimer = lib_timers_starttimer();
@@ -716,12 +723,12 @@ static void detectstickcommand(void) {
             } // else: nothing happened, nothing to do
         }
 
-        if(lib_timers_gettimermicroseconds(stickcommandtimer) > 1000000L) {
+        if (lib_timers_gettimermicroseconds(stickcommandtimer) > 1000000L) {
             // Timeout: last detected stick movement was more than 1 second ago.
             lastrollstickstate = STICK_STATE_START;
         }
 
-        if(rollmovecounter == 6) {
+        if (rollmovecounter == 6) {
             // Now we had enough movements. Execute calibration.
             calibrategyroandaccelerometer(true);
             // Save in EEPROM

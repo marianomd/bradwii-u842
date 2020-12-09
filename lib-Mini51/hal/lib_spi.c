@@ -13,26 +13,25 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #pragma once
 
 #include "hal.h"
 #include "lib_spi.h"
 
-void lib_spi_init(void)
-{
+void lib_spi_init(void) {
     CLK_EnableModuleClock(SPI_MODULE);
 
     CLK->CLKSEL1 |= CLK_CLKSEL1_SPI_S_HCLK;
 
     // MFP pin configuration
-    SYS->P0_MFP |= SYS_MFP_P01_SPISS | SYS_MFP_P05_MOSI | SYS_MFP_P06_MISO | SYS_MFP_P07_SPICLK;
+    SYS->P0_MFP |= SYS_MFP_P04_SPISS | SYS_MFP_P05_MOSI | SYS_MFP_P06_MISO | SYS_MFP_P07_SPICLK;
 
     //SYS_ResetModule(SPI_RST);
-    SYS->IPRSTC2 |=  SYS_IPRSTC2_SPI_RST_Msk;
+    SYS->IPRSTC2 |= SYS_IPRSTC2_SPI_RST_Msk;
     SYS->IPRSTC2 &= ~SYS_IPRSTC2_SPI_RST_Msk;
-    
+
     // Configure as a master, clock idle low,
     // falling clock edge Tx, rising edge Rx and 32-bit transaction
     CLK->APBCLK |= CLK_APBCLK_SPI_EN_Msk;
@@ -49,26 +48,23 @@ void lib_spi_init(void)
     SPI->SSR |= SPI_SS_ACTIVE_LOW;
 }
 
-void lib_spi_ss_on(void)
-{
+void lib_spi_ss_on(void) {
     SPI->SSR |= SPI_SS;
 }
 
-void lib_spi_ss_off(void)
-{
+void lib_spi_ss_off(void) {
     SPI->SSR &= ~SPI_SS;
 }
 
-uint8_t lib_spi_xfer(uint8_t data)
-{
+uint8_t lib_spi_xfer(uint8_t data) {
     SPI->TX = data;
 
     /* SPI Go */
     SPI->CNTRL |= SPI_CNTRL_GO_BUSY_Msk;
 
     /* Wait SPI is free */
-    while(SPI->CNTRL & SPI_CNTRL_GO_BUSY_Msk);
+    while (SPI->CNTRL & SPI_CNTRL_GO_BUSY_Msk);
 
     /* Read Data */
     return SPI->RX;
-}    
+}

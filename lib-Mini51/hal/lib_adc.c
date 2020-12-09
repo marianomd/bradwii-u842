@@ -4,7 +4,7 @@
  * You can redistribute it and/or modify it under the terms of the
  * Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar.
  * See http://www.wtfpl.net/ for more details.
-*/
+ */
 
 #include "hal.h"
 #include "lib_fp.h"
@@ -17,11 +17,18 @@
 void lib_adc_init(void) {
     CLK_EnableModuleClock(ADC_MODULE);
 
+    // At the moment just	for testing!
+    // Disabel SetModuleClock for ADC when using serial because the ClockModul is already setup to meet the BAUD settings
+#if MULTIWII_CONFIG_SERIAL_PORTS == NOSERIALPORT
     // 22MHz / 75 = 293kHz clock for ADC module
     // -> approx 137µs conversion time.
     CLK_SetModuleClock(ADC_MODULE,
-                       CLK_CLKSEL1_ADC_S_IRC22M,
-                       CLK_CLKDIV_ADC(50));
+            CLK_CLKSEL1_ADC_S_IRC22M,
+            CLK_CLKDIV_ADC(50));
+#else
+#warning "ADC conversion time is depenend from serial clock speed!"
+#endif
+
     ADC_POWER_ON(ADC);
 } // lib_adc_init()
 
@@ -37,7 +44,7 @@ void lib_adc_select_channel(lib_adc_channel_t channel) {
         ADC_CONFIG_CH7(ADC, ADC_CH7_EXT);
     }
 
-    ADC_SET_INPUT_CHANNEL(ADC,channel);
+    ADC_SET_INPUT_CHANNEL(ADC, channel);
 } // lib_adc_select_channel()
 
 bool lib_adc_is_busy(void) {
@@ -49,6 +56,7 @@ void lib_adc_startconv(void) {
 }
 
 // Returns measured absolute voltage as fixedpointnum
+
 fixedpointnum lib_adc_read_volt(void) {
     fixedpointnum voltage;
     // ADC_GET_CONVERSION_DATA() returns uint32, only lower 10 bits used
@@ -62,8 +70,15 @@ fixedpointnum lib_adc_read_volt(void) {
 } // lib_adc_read_volt()
 
 // Returns ADC result as fixedpointnum between 0..1
+
 fixedpointnum lib_adc_read_raw(void) {
     fixedpointnum voltage;
+		if(ADC_IS_DATA_OVERRUN(ADC, 0)){
+			return 0;
+		}
+		if(!ADC_IS_DATA_VALID(ADC, 0)){
+			return 0;
+		}
     // ADC_GET_CONVERSION_DATA() returns uint32, only lower 10 bits used
     voltage = (fixedpointnum) ADC_GET_CONVERSION_DATA(ADC, 0);
     // Now shift left to get a fixedpointnum, which then is a fraction

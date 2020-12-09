@@ -13,7 +13,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #define NUMPOSSIBLECHECKBOXES 20        // allocate room for more checkboxes in eeprom memory in case we add them later
 
@@ -31,7 +31,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define CHECKBOXUNCRASHABLE 11
 #define CHECKBOXHEADFREE 12
 #define CHECKBOXYAWHOLD 13
-#define NUMCHECKBOXES 14
+#define CHECKBOXLED1	14
+#define CHECKBOXLED2	15
+#define CHECKBOXLEDTOGGLE 16
+#define NUMCHECKBOXES 17
 
 #define CHECKBOXMASKARM (1<<CHECKBOXARM)
 #define CHECKBOXMASKAUTOTHROTTLE (1<<CHECKBOXAUTOTHROTTLE)
@@ -47,6 +50,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define CHECKBOXMASKUNCRASHABLE (1<<CHECKBOXUNCRASHABLE)
 #define CHECKBOXMASKHEADFREE (1<<CHECKBOXHEADFREE)
 #define CHECKBOXMASKYAWHOLD (1<<CHECKBOXYAWHOLD)
+#define CHECKBOXMASKLED1 (1<<CHECKBOXLED1)
+#define CHECKBOXMASKLED2 (1<<CHECKBOXLED2)
+#define CHECKBOXMASKLEDTOGGLE (1<<CHECKBOXLEDTOGGLE)
 
 #define CHECKBOXMASKAUX1LOW (1<<0)
 #define CHECKBOXMASKAUX1MID (1<<1)

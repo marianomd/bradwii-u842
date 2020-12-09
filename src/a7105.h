@@ -72,4 +72,5 @@ void A7105_ReadPayload(uint8_t *_packet, uint8_t len);
 void A7105_Reset(void);
 uint8_t A7105_ReadRegister(uint8_t address);
 void A7105_WriteRegister(uint8_t address, uint8_t data);
+void A7105_WriteRaw(int * data, uint8_t len);
 void A7105_Strobe(uint8_t command);
