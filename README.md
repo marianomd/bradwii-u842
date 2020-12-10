@@ -3,6 +3,7 @@ UDIRC U842 Support. Original receiver replaced with A7105 for FlySky TX compatib
 FlySky protocol picked up from: https://github.com/silver13/hubsan-flysky-protocol
 Other improvements taken from: https://github.com/TheSmartGerman/bradwii-X4
 Thanks to all the modders and rcgroups. https://www.rcgroups.com/forums/showthread.php?2174365-Bradwii-on-V202-V252-JD-385
+And thanks to @victzh who explained me how current sense pins work (https://github.com/hackocopter/JD385_Documentation/issues/1)
 
 Currently compiles as X4 (HL107).
 
